@@ -26,6 +26,7 @@ function setupConfig(): void {
     'EXCLUDED_FOLDER_IDS': JSON.stringify([]),
     'EXCLUDED_EXTENSIONS': JSON.stringify([]),
     'FOLDER_SORT_MODE': 'LAST_UPDATED',
+    'FILE_AGE_FILTER_DAYS': '0',
     'DRY_RUN': 'true'
   };
 
@@ -67,6 +68,7 @@ function setupConfig(): void {
   Logger.log('   • EXCLUDED_EXTENSIONS: [] (file extensions to exclude)');
   Logger.log('   • DUPLICATION_WINDOW_HOURS: 24');
   Logger.log('   • FOLDER_SORT_MODE: "LAST_UPDATED" (or "RANDOM")');
+  Logger.log('   • FILE_AGE_FILTER_DAYS: 0 (0=all files, N=only files created in last N days)');
   Logger.log('   • DRY_RUN: true (change to false when ready to delete)');
   Logger.log('');
   Logger.log('   💡 To find a folder ID: Open folder in Drive, copy ID from URL');
@@ -112,6 +114,7 @@ function cleanDuplicateAttachments(): void {
     Logger.log(`Duplication window: ${config.DUPLICATION_WINDOW_HOURS} hours`);
     Logger.log(`Max execution time: ${config.MAX_EXECUTION_TIME_SECONDS} seconds`);
     Logger.log(`Folder sort mode: ${config.FOLDER_SORT_MODE}`);
+    Logger.log(`File age filter: ${config.FILE_AGE_FILTER_DAYS === 0 ? 'disabled (all files)' : `${config.FILE_AGE_FILTER_DAYS} days`}`);
     Logger.log(`Excluded folders: ${config.EXCLUDED_FOLDER_IDS.length}`);
     Logger.log(`Excluded extensions: ${config.EXCLUDED_EXTENSIONS.length > 0 ? config.EXCLUDED_EXTENSIONS.join(', ') : 'none'}`);
     Logger.log('');
@@ -202,6 +205,7 @@ function viewConfig(): void {
     Logger.log(`EXCLUDED_FOLDER_IDS: ${JSON.stringify(config.EXCLUDED_FOLDER_IDS, null, 2)}`);
     Logger.log(`EXCLUDED_EXTENSIONS: ${JSON.stringify(config.EXCLUDED_EXTENSIONS, null, 2)}`);
     Logger.log(`FOLDER_SORT_MODE: ${config.FOLDER_SORT_MODE}`);
+    Logger.log(`FILE_AGE_FILTER_DAYS: ${config.FILE_AGE_FILTER_DAYS}`);
     Logger.log(`DRY_RUN: ${config.DRY_RUN}`);
     Logger.log('─'.repeat(80));
   } catch (e: any) {

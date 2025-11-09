@@ -147,6 +147,15 @@ function processFolder(
       continue;
     }
 
+    // Check file age filter (if enabled)
+    if (config.FILE_AGE_FILTER_DAYS > 0) {
+      const fileAge = Date.now() - file.getDateCreated().getTime();
+      if (fileAge > config.FILE_AGE_FILTER_MS) {
+        filesSkipped++;
+        continue;
+      }
+    }
+
     // Check if file extension is excluded
     if (isFileExcluded(file, config.EXCLUDED_EXTENSIONS)) {
       Logger.log(`${getTimestamp()}   ⏭️  Skipping ${file.getName()} - excluded extension`);

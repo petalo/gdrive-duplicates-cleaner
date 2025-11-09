@@ -139,6 +139,12 @@ PropertiesService.getScriptProperties().setProperty(
   "LAST_UPDATED"
 );
 
+// Set file age filter (0 = all files, N = only files created in last N days)
+PropertiesService.getScriptProperties().setProperty(
+  "FILE_AGE_FILTER_DAYS",
+  "0"
+);
+
 // Enable/disable dry-run mode
 PropertiesService.getScriptProperties().setProperty("DRY_RUN", "false");
 ```
@@ -153,6 +159,7 @@ PropertiesService.getScriptProperties().setProperty("DRY_RUN", "false");
 | `EXCLUDED_FOLDER_IDS`        | string[] | `[]`            | Folders to skip (automatically excludes subfolders too)               |
 | `EXCLUDED_EXTENSIONS`        | string[] | `[]`            | File extensions to skip (e.g., `['exe', 'dmg']`)                      |
 | `FOLDER_SORT_MODE`           | string   | `LAST_UPDATED`  | Folder processing order: `LAST_UPDATED` (recent first) or `RANDOM`   |
+| `FILE_AGE_FILTER_DAYS`       | number   | `0`             | Only analyze files created in last N days (`0` = all files)           |
 | `DRY_RUN`                    | boolean  | `true`          | If `true`, no files are deleted (test mode)                           |
 
 ### Finding Folder IDs
@@ -238,6 +245,28 @@ Folders are processed in **random order** each execution:
 
 - Useful for policy reasons (e.g., never delete executables)
 - Applied before MD5 check (performance optimization)
+
+### File Age Filter
+
+The `FILE_AGE_FILTER_DAYS` setting allows you to limit duplicate detection to recently created files:
+
+- **`0` (default)**: Analyzes all files regardless of age
+- **`N` (days)**: Only analyzes files created in the last N days
+
+**When to use:**
+
+- ✅ **Performance optimization**: Skip old files to speed up processing in large folders
+- ✅ **Focus on recent duplicates**: Only clean up recent duplicate attachments
+- ✅ **Incremental cleanup**: Process recent files first, older files later
+- ✅ **Reduce API calls**: Fewer files analyzed = fewer Drive API calls = faster execution
+
+**Example use cases:**
+
+- Set to `7` to only clean duplicates from the last week
+- Set to `30` to focus on files from the last month
+- Set to `1` for daily cleanup of same-day duplicates
+
+**Note:** This filter is applied before MD5 calculation, so it improves performance by skipping file analysis entirely for old files.
 
 ## Project Structure
 
