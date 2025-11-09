@@ -1,0 +1,28 @@
+{
+  "name": "gdrive-duplicates-cleaner",
+  "version": "1.0.0",
+  "description": "Automatically clean duplicate attachments from Google Drive folders",
+  "scripts": {
+    "login": "clasp login",
+    "create": "clasp create --type standalone --title 'GDrive Duplicates Cleaner'",
+    "build": "tsc && cp appsscript.json dist/",
+    "push": "npm run build && clasp push --force",
+    "pull": "clasp pull",
+    "deploy": "clasp deploy",
+    "open": "clasp open",
+    "logs": "clasp logs"
+  },
+  "keywords": [
+    "google-apps-script",
+    "drive",
+    "cleanup",
+    "duplicates"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@google/clasp": "^2.4.2",
+    "@types/google-apps-script": "^1.0.83",
+    "typescript": "^5.3.3"
+  }
+}
