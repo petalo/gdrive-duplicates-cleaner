@@ -9,6 +9,9 @@ interface Config {
   EXCLUDED_EXTENSIONS: string[];
   FOLDER_SORT_MODE: 'LAST_UPDATED' | 'RANDOM';
   FILE_AGE_FILTER_DAYS: number;
+  MERGE_DUPLICATE_FOLDERS: boolean;
+  MERGE_FOLDERS_RECURSIVE: boolean;
+  MERGE_KEEP_FOLDER_STRATEGY: 'OLDEST' | 'NEWEST' | 'MOST_FILES';
   DRY_RUN: boolean;
 }
 
@@ -36,6 +39,9 @@ function getConfig(): RuntimeConfig {
     EXCLUDED_EXTENSIONS: JSON.parse(props.getProperty('EXCLUDED_EXTENSIONS') || '[]'),
     FOLDER_SORT_MODE: (props.getProperty('FOLDER_SORT_MODE') || 'LAST_UPDATED') as 'LAST_UPDATED' | 'RANDOM',
     FILE_AGE_FILTER_DAYS: parseFloat(props.getProperty('FILE_AGE_FILTER_DAYS') || '0'),
+    MERGE_DUPLICATE_FOLDERS: props.getProperty('MERGE_DUPLICATE_FOLDERS') === 'true',
+    MERGE_FOLDERS_RECURSIVE: props.getProperty('MERGE_FOLDERS_RECURSIVE') !== 'false',
+    MERGE_KEEP_FOLDER_STRATEGY: (props.getProperty('MERGE_KEEP_FOLDER_STRATEGY') || 'OLDEST') as 'OLDEST' | 'NEWEST' | 'MOST_FILES',
     DRY_RUN: props.getProperty('DRY_RUN') === 'true'
   };
 

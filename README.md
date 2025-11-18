@@ -2,6 +2,51 @@
 
 Automatically clean duplicate files from Google Drive folders based on MD5 checksums. Designed to handle duplicate attachments that occur when multiple users receive the same email and their respective Flows save attachments simultaneously to shared Drive folders.
 
+## Table of Contents
+
+- [Drive Duplicate Cleaner](#drive-duplicate-cleaner)
+  - [Table of Contents](#table-of-contents)
+  - [Features](#features)
+  - [How It Works](#how-it-works)
+  - [Installation](#installation)
+    - [Prerequisites](#prerequisites)
+    - [Setup Steps](#setup-steps)
+  - [Configuration](#configuration)
+    - [Initial Setup](#initial-setup)
+    - [Update Configuration](#update-configuration)
+    - [Configuration Options](#configuration-options)
+    - [Finding Folder IDs](#finding-folder-ids)
+  - [Usage](#usage)
+    - [Manual Execution](#manual-execution)
+    - [Automated Execution (Recommended)](#automated-execution-recommended)
+    - [Testing Before Live Run](#testing-before-live-run)
+    - [Viewing Configuration](#viewing-configuration)
+  - [How Duplicates Are Identified](#how-duplicates-are-identified)
+  - [Folder Prioritization](#folder-prioritization)
+    - [LAST\_UPDATED (Default)](#last_updated-default)
+    - [RANDOM](#random)
+  - [Exclusions](#exclusions)
+    - [Folder Exclusions](#folder-exclusions)
+    - [Extension Exclusions](#extension-exclusions)
+    - [File Age Filter](#file-age-filter)
+    - [Folder Merge](#folder-merge)
+  - [Project Structure](#project-structure)
+  - [Process Flow Diagram](#process-flow-diagram)
+  - [Development](#development)
+    - [Local Development](#local-development)
+    - [Viewing Logs](#viewing-logs)
+    - [Pull Changes from Apps Script](#pull-changes-from-apps-script)
+  - [Troubleshooting](#troubleshooting)
+    - ["Drive.Files.get is not a function" or "Drive is not defined"](#drivefilesget-is-not-a-function-or-drive-is-not-defined)
+    - ["ROOT\_FOLDER\_IDS is empty"](#root_folder_ids-is-empty)
+    - ["Cannot access folder X"](#cannot-access-folder-x)
+    - [Script times out](#script-times-out)
+    - [Too many duplicates deleted](#too-many-duplicates-deleted)
+    - [Files not being detected as duplicates](#files-not-being-detected-as-duplicates)
+  - [Limitations](#limitations)
+  - [Safety Features](#safety-features)
+  - [License](#license)
+
 ## Features
 
 - **MD5-based Detection**: Uses cryptographic hashes to identify truly identical files
@@ -84,6 +129,7 @@ Automatically clean duplicate files from Google Drive folders based on MD5 check
    ![Permissions Screenshot](assets/permissions.png)
 
    You need to authorize:
+
    - ✅ **See, edit, create, and delete all of your Google Drive files** - Required to analyze files and move duplicates to trash
    - ⚠️ **Allow this application to run when you are not present** - Optional, only needed if you want automated triggers
 
@@ -145,22 +191,43 @@ PropertiesService.getScriptProperties().setProperty(
   "0"
 );
 
+// Enable folder merge feature (default: false - disabled)
+PropertiesService.getScriptProperties().setProperty(
+  "MERGE_DUPLICATE_FOLDERS",
+  "false"
+);
+
+// Merge folders recursively (default: true)
+PropertiesService.getScriptProperties().setProperty(
+  "MERGE_FOLDERS_RECURSIVE",
+  "true"
+);
+
+// Strategy for selecting which folder to keep (OLDEST, NEWEST, or MOST_FILES)
+PropertiesService.getScriptProperties().setProperty(
+  "MERGE_KEEP_FOLDER_STRATEGY",
+  "OLDEST"
+);
+
 // Enable/disable dry-run mode
 PropertiesService.getScriptProperties().setProperty("DRY_RUN", "false");
 ```
 
 ### Configuration Options
 
-| Option                       | Type     | Default         | Description                                                           |
-| ---------------------------- | -------- | --------------- | --------------------------------------------------------------------- |
-| `ROOT_FOLDER_IDS`            | string[] | `[]`            | Array of folder IDs to process (supports My Drive and Shared Drives)  |
-| `DUPLICATION_WINDOW_HOURS`   | number   | `24`            | Only delete duplicates created within this many hours of the original |
-| `MAX_EXECUTION_TIME_SECONDS` | number   | `300`           | Stop execution before this limit (Apps Script limit is 360 seconds)   |
-| `EXCLUDED_FOLDER_IDS`        | string[] | `[]`            | Folders to skip (automatically excludes subfolders too)               |
-| `EXCLUDED_EXTENSIONS`        | string[] | `[]`            | File extensions to skip (e.g., `['exe', 'dmg']`)                      |
-| `FOLDER_SORT_MODE`           | string   | `LAST_UPDATED`  | Folder processing order: `LAST_UPDATED` (recent first) or `RANDOM`   |
-| `FILE_AGE_FILTER_DAYS`       | number   | `0`             | Only analyze files created in last N days (`0` = all files)           |
-| `DRY_RUN`                    | boolean  | `true`          | If `true`, no files are deleted (test mode)                           |
+| Option                       | Type     | Default        | Description                                                           |
+| ---------------------------- | -------- | -------------- | --------------------------------------------------------------------- |
+| `ROOT_FOLDER_IDS`            | string[] | `[]`           | Array of folder IDs to process (supports My Drive and Shared Drives)  |
+| `DUPLICATION_WINDOW_HOURS`   | number   | `24`           | Only delete duplicates created within this many hours of the original |
+| `MAX_EXECUTION_TIME_SECONDS` | number   | `300`          | Stop execution before this limit (Apps Script limit is 360 seconds)   |
+| `EXCLUDED_FOLDER_IDS`        | string[] | `[]`           | Folders to skip (automatically excludes subfolders too)               |
+| `EXCLUDED_EXTENSIONS`        | string[] | `[]`           | File extensions to skip (e.g., `['exe', 'dmg']`)                      |
+| `FOLDER_SORT_MODE`           | string   | `LAST_UPDATED` | Folder processing order: `LAST_UPDATED` (recent first) or `RANDOM`    |
+| `FILE_AGE_FILTER_DAYS`       | number   | `0`            | Only analyze files created in last N days (`0` = all files)           |
+| `MERGE_DUPLICATE_FOLDERS`    | boolean  | `false`        | Enable automatic merging of folders with same name at same level      |
+| `MERGE_FOLDERS_RECURSIVE`    | boolean  | `true`         | Merge duplicate subfolders recursively (if merge is enabled)          |
+| `MERGE_KEEP_FOLDER_STRATEGY` | string   | `OLDEST`       | Which folder to keep: `OLDEST`, `NEWEST`, or `MOST_FILES`             |
+| `DRY_RUN`                    | boolean  | `true`         | If `true`, no files are deleted (test mode)                           |
 
 ### Finding Folder IDs
 
@@ -268,6 +335,76 @@ The `FILE_AGE_FILTER_DAYS` setting allows you to limit duplicate detection to re
 
 **Note:** This filter is applied before MD5 calculation, so it improves performance by skipping file analysis entirely for old files.
 
+### Folder Merge
+
+The `MERGE_DUPLICATE_FOLDERS` feature automatically detects and merges folders with identical names at the same hierarchy level.
+
+**Common Scenario:**
+
+Automated processes (email-to-Drive flows, Zapier, Make, etc.) create duplicate folders when they can't find an existing one:
+
+```text
+Before:
+📁 Shared Drive/
+  📁 dcycle.io (created by automation on Nov 14)
+    📄 contract-v1.pdf
+  📁 dcycle.io (created by automation on Nov 17)
+    📄 contract-v2.pdf
+    📄 invoice.pdf
+  📁 costa.io
+    ...
+
+After merge:
+📁 Shared Drive/
+  📁 dcycle.io (consolidated)
+    📄 contract-v1.pdf
+    📄 contract-v2.pdf
+    📄 invoice.pdf
+  📁 costa.io
+    ...
+```
+
+**How it works:**
+
+1. **Detection**: Scans all folders recursively, groups by `(parentId + name)`
+2. **Selection**: Chooses one folder to keep based on `MERGE_KEEP_FOLDER_STRATEGY`:
+   - `OLDEST`: Keep the first created folder (default)
+   - `NEWEST`: Keep the most recently modified folder
+   - `MOST_FILES`: Keep the folder with most files (recursive count)
+3. **File merging**: Moves files from duplicate folders to the target
+4. **Conflict resolution**: When files have same name:
+   - **Same MD5**: Applies duplication window logic (like file cleanup)
+   - **Different MD5**: Renames incoming file (e.g., `file.pdf` → `file (2).pdf`)
+   - **No MD5**: Renames incoming file
+5. **Cleanup**: Deletes empty source folders after merge
+
+**Configuration:**
+
+- `MERGE_DUPLICATE_FOLDERS`: `false` (default - feature disabled for safety)
+- `MERGE_FOLDERS_RECURSIVE`: `true` (also merge duplicate subfolders)
+- `MERGE_KEEP_FOLDER_STRATEGY`: `'OLDEST'` (or `'NEWEST'` or `'MOST_FILES'`)
+
+**When to enable:**
+
+✅ **Enable if:**
+
+- Automated processes create duplicate folders regularly
+- You need to consolidate scattered content
+- Your team creates duplicate folders manually
+
+❌ **Keep disabled if:**
+
+- Folder structure is well-maintained manually
+- Duplicate folders serve different purposes (different contexts)
+- You prefer manual review before merging
+
+**Important notes:**
+
+- ⚠️ **Test with DRY_RUN first**: Always run in dry-run mode to preview changes
+- ⚠️ **Runs before file cleanup**: Folders are merged first, then files are cleaned
+- ⚠️ **Recursive by default**: If two "Q1/" folders exist inside two "2024/" folders, all will be merged
+- ⚠️ **Respects exclusions**: `EXCLUDED_FOLDER_IDS` are not scanned or merged
+
 ## Project Structure
 
 ```text
@@ -275,13 +412,114 @@ drive-delete-duplicated-files/
 ├── src/
 │   ├── main.ts           # Entry points (cleanDuplicateAttachments, setupConfig)
 │   ├── config.ts         # Configuration management
-│   ├── processors.ts     # Core processing logic
+│   ├── processors.ts     # Core file processing logic
+│   ├── folder-merger.ts  # Folder merge detection and execution
 │   └── utils.ts          # Helper functions
 ├── appsscript.json       # Apps Script manifest
 ├── package.json          # Node dependencies and scripts
 ├── tsconfig.json         # TypeScript configuration
 └── README.md             # This file
 ```
+
+## Process Flow Diagram
+
+This diagram illustrates the complete execution flow of the Drive Duplicate Cleaner, including both folder merge and file cleanup phases:
+
+```mermaid
+flowchart TD
+    Start([Start Execution]) --> CheckMerge{MERGE_DUPLICATE_FOLDERS<br/>enabled?}
+
+    %% Folder Merge Branch
+    CheckMerge -->|Yes| ScanFolders[Scan all folders recursively<br/>using BFS]
+    ScanFolders --> GroupFolders[Group folders by<br/>parentId + name]
+    GroupFolders --> HasDuplicates{Found duplicate<br/>folder groups?}
+    HasDuplicates -->|Yes| SelectTarget[Select target folder<br/>OLDEST/NEWEST/MOST_FILES]
+    SelectTarget --> MoveFiles[Move files from duplicates<br/>to target folder]
+    MoveFiles --> FileConflict{File name<br/>conflict?}
+    FileConflict -->|No| MoveFile[Move file directly]
+    FileConflict -->|Yes| CheckMD5{Same MD5?}
+    CheckMD5 -->|Yes| CheckWindow{Within duplication<br/>window?}
+    CheckWindow -->|Yes| DeleteDup[Delete duplicate file]
+    CheckWindow -->|No| RenameFile[Rename incoming file<br/>e.g., file_2.pdf]
+    CheckMD5 -->|No MD5 or Different| RenameFile
+    MoveFile --> CheckEmpty{Source folder<br/>empty?}
+    RenameFile --> CheckEmpty
+    DeleteDup --> CheckEmpty
+    CheckEmpty -->|Yes| DeleteFolder[Delete empty folder]
+    CheckEmpty -->|No| KeepFolder[Keep folder]
+    DeleteFolder --> NextFolder{More duplicate<br/>folders?}
+    KeepFolder --> NextFolder
+    NextFolder -->|Yes| SelectTarget
+    NextFolder -->|No| FilesPhase
+    HasDuplicates -->|No| FilesPhase
+    CheckMerge -->|No| FilesPhase
+
+    %% File Cleanup Branch
+    FilesPhase[Phase 2: File Cleanup]
+    FilesPhase --> SortFolders[Sort folders by mode<br/>LAST_UPDATED/RANDOM]
+    SortFolders --> ProcessFolder[Process next folder]
+    ProcessFolder --> GetFiles[Get all files in folder]
+    GetFiles --> CheckFile{For each file}
+    CheckFile --> IsTrashed{Trashed?}
+    IsTrashed -->|Yes| NextFile
+    IsTrashed -->|No| CheckAge{FILE_AGE_FILTER_DAYS<br/>enabled?}
+    CheckAge -->|Yes| TooOld{File too old?}
+    TooOld -->|Yes| SkipFile[Skip file]
+    TooOld -->|No| CheckExt
+    CheckAge -->|No| CheckExt{Extension<br/>excluded?}
+    CheckExt -->|Yes| SkipFile
+    CheckExt -->|No| GetMD5[Get MD5 checksum<br/>via Drive API]
+    GetMD5 --> HasMD5{Has MD5?}
+    HasMD5 -->|No| SkipFile
+    HasMD5 -->|Yes| GroupByMD5[Add to MD5 group]
+    SkipFile --> NextFile
+    GroupByMD5 --> NextFile{More files?}
+    NextFile -->|Yes| CheckFile
+    NextFile -->|No| ProcessGroups[Process duplicate groups]
+    ProcessGroups --> CheckDups{Group has<br/>duplicates?}
+    CheckDups -->|Yes, 2+| SortByDate[Sort by creation date<br/>oldest first]
+    SortByDate --> KeepOldest[Keep oldest file]
+    KeepOldest --> CheckDupWindow{Duplicate within<br/>time window?}
+    CheckDupWindow -->|Yes| TrashDup[Move to trash]
+    CheckDupWindow -->|No| KeepDup[Keep both files]
+    TrashDup --> NextGroup{More groups?}
+    KeepDup --> NextGroup
+    CheckDups -->|No, only 1| NextGroup
+    NextGroup -->|Yes| CheckDups
+    NextGroup -->|No| CheckTimeout{Timeout or<br/>more folders?}
+    CheckTimeout -->|More folders| ProcessFolder
+    CheckTimeout -->|Timeout/Done| Summary[Show summary statistics]
+    Summary --> End([End Execution])
+
+    style Start fill:#e1f5e1
+    style End fill:#ffe1e1
+    style CheckMerge fill:#fff4e1
+    style FileConflict fill:#fff4e1
+    style CheckMD5 fill:#e1f0ff
+    style CheckWindow fill:#e1f0ff
+    style CheckAge fill:#fff4e1
+    style CheckExt fill:#fff4e1
+    style HasMD5 fill:#e1f0ff
+    style CheckDups fill:#fff4e1
+    style CheckDupWindow fill:#e1f0ff
+    style DeleteDup fill:#ffe1e1
+    style TrashDup fill:#ffe1e1
+    style DeleteFolder fill:#ffe1e1
+```
+
+**Key Decision Points:**
+
+1. **Folder Merge (if enabled)**:
+
+   - Groups folders with same name at same level
+   - Resolves file conflicts using MD5 + duplication window
+   - Deletes empty source folders after merge
+
+2. **File Cleanup**:
+   - Filters by age and extension before processing
+   - Groups identical files by MD5 checksum
+   - Only deletes duplicates within time window
+   - Always preserves the oldest file
 
 ## Development
 
@@ -365,7 +603,3 @@ Run `setupConfig()` first, then update the folder IDs in Project Settings > Scri
 ## License
 
 MIT
-
-## Support
-
-For issues or questions, please check the logs first using `viewConfig()` and reviewing execution logs.

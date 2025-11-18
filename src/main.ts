@@ -27,6 +27,9 @@ function setupConfig(): void {
     'EXCLUDED_EXTENSIONS': JSON.stringify([]),
     'FOLDER_SORT_MODE': 'LAST_UPDATED',
     'FILE_AGE_FILTER_DAYS': '0',
+    'MERGE_DUPLICATE_FOLDERS': 'false',
+    'MERGE_FOLDERS_RECURSIVE': 'true',
+    'MERGE_KEEP_FOLDER_STRATEGY': 'OLDEST',
     'DRY_RUN': 'true'
   };
 
@@ -69,6 +72,9 @@ function setupConfig(): void {
   Logger.log('   • DUPLICATION_WINDOW_HOURS: 24');
   Logger.log('   • FOLDER_SORT_MODE: "LAST_UPDATED" (or "RANDOM")');
   Logger.log('   • FILE_AGE_FILTER_DAYS: 0 (0=all files, N=only files created in last N days)');
+  Logger.log('   • MERGE_DUPLICATE_FOLDERS: false (enable folder merge feature)');
+  Logger.log('   • MERGE_FOLDERS_RECURSIVE: true (merge subfolders recursively)');
+  Logger.log('   • MERGE_KEEP_FOLDER_STRATEGY: "OLDEST" (or "NEWEST" or "MOST_FILES")');
   Logger.log('   • DRY_RUN: true (change to false when ready to delete)');
   Logger.log('');
   Logger.log('   💡 To find a folder ID: Open folder in Drive, copy ID from URL');
@@ -115,6 +121,7 @@ function cleanDuplicateAttachments(): void {
     Logger.log(`Max execution time: ${config.MAX_EXECUTION_TIME_SECONDS} seconds`);
     Logger.log(`Folder sort mode: ${config.FOLDER_SORT_MODE}`);
     Logger.log(`File age filter: ${config.FILE_AGE_FILTER_DAYS === 0 ? 'disabled (all files)' : `${config.FILE_AGE_FILTER_DAYS} days`}`);
+    Logger.log(`Folder merge: ${config.MERGE_DUPLICATE_FOLDERS ? `enabled (${config.MERGE_KEEP_FOLDER_STRATEGY}, ${config.MERGE_FOLDERS_RECURSIVE ? 'recursive' : 'non-recursive'})` : 'disabled'}`);
     Logger.log(`Excluded folders: ${config.EXCLUDED_FOLDER_IDS.length}`);
     Logger.log(`Excluded extensions: ${config.EXCLUDED_EXTENSIONS.length > 0 ? config.EXCLUDED_EXTENSIONS.join(', ') : 'none'}`);
     Logger.log('');
@@ -129,6 +136,16 @@ function cleanDuplicateAttachments(): void {
       spaceFreed: 0
     };
 
+    const totalMergeStats: MergeStats = {
+      foldersScanned: 0,
+      duplicateGroupsFound: 0,
+      foldersMerged: 0,
+      filesMovedDuringMerge: 0,
+      filesDuplicatedDuringMerge: 0,
+      filesRenamedDuringMerge: 0,
+      emptyFoldersDeleted: 0
+    };
+
     // Process each root folder
     for (const rootFolderId of config.ROOT_FOLDER_IDS) {
       // Check global timeout
@@ -139,9 +156,28 @@ function cleanDuplicateAttachments(): void {
 
       try {
         const rootFolder = DriveApp.getFolderById(rootFolderId);
+
+        // PHASE 1: Merge duplicate folders (if enabled)
+        if (config.MERGE_DUPLICATE_FOLDERS) {
+          Logger.log('');
+          Logger.log(`${getTimestamp()} 📂 Processing root for folder merge: ${rootFolder.getName()}`);
+
+          const mergeStats = mergeDuplicateFolders(rootFolder, config, startTime);
+
+          // Aggregate merge stats
+          totalMergeStats.foldersScanned += mergeStats.foldersScanned;
+          totalMergeStats.duplicateGroupsFound += mergeStats.duplicateGroupsFound;
+          totalMergeStats.foldersMerged += mergeStats.foldersMerged;
+          totalMergeStats.filesMovedDuringMerge += mergeStats.filesMovedDuringMerge;
+          totalMergeStats.filesDuplicatedDuringMerge += mergeStats.filesDuplicatedDuringMerge;
+          totalMergeStats.filesRenamedDuringMerge += mergeStats.filesRenamedDuringMerge;
+          totalMergeStats.emptyFoldersDeleted += mergeStats.emptyFoldersDeleted;
+        }
+
+        // PHASE 2: Clean duplicate files (existing logic)
         const stats = processRootFolder(rootFolder, config, startTime);
 
-        // Aggregate stats
+        // Aggregate file stats
         totalStats.foldersProcessed += stats.foldersProcessed;
         totalStats.totalFolders += stats.totalFolders;
         totalStats.filesAnalyzed += stats.filesAnalyzed;
@@ -164,11 +200,28 @@ function cleanDuplicateAttachments(): void {
     Logger.log(`${getTimestamp()} ✅ Execution Completed`);
     Logger.log('='.repeat(80));
     Logger.log(`Duration: ${formatDuration(totalDuration)}`);
-    Logger.log(`Folders processed: ${totalStats.foldersProcessed} / ${totalStats.totalFolders}`);
-    Logger.log(`Files analyzed: ${totalStats.filesAnalyzed}`);
-    Logger.log(`Files skipped: ${totalStats.filesSkipped}`);
-    Logger.log(`Files ${config.DRY_RUN ? 'that would be deleted' : 'deleted'}: ${totalStats.filesDeleted}`);
-    Logger.log(`Space ${config.DRY_RUN ? 'that would be freed' : 'freed'}: ${formatBytes(totalStats.spaceFreed)}`);
+
+    // Folder merge summary (if enabled)
+    if (config.MERGE_DUPLICATE_FOLDERS) {
+      Logger.log('');
+      Logger.log('📂 Folder Merge Results:');
+      Logger.log(`   Folders scanned: ${totalMergeStats.foldersScanned}`);
+      Logger.log(`   Duplicate groups found: ${totalMergeStats.duplicateGroupsFound}`);
+      Logger.log(`   Folders ${config.DRY_RUN ? 'that would be merged' : 'merged'}: ${totalMergeStats.foldersMerged}`);
+      Logger.log(`   Files ${config.DRY_RUN ? 'that would be moved' : 'moved'}: ${totalMergeStats.filesMovedDuringMerge}`);
+      Logger.log(`   Duplicates ${config.DRY_RUN ? 'that would be handled' : 'handled'}: ${totalMergeStats.filesDuplicatedDuringMerge}`);
+      Logger.log(`   Files ${config.DRY_RUN ? 'that would be renamed' : 'renamed'}: ${totalMergeStats.filesRenamedDuringMerge}`);
+      Logger.log(`   Empty folders ${config.DRY_RUN ? 'that would be deleted' : 'deleted'}: ${totalMergeStats.emptyFoldersDeleted}`);
+    }
+
+    // File cleanup summary
+    Logger.log('');
+    Logger.log('📄 File Cleanup Results:');
+    Logger.log(`   Folders processed: ${totalStats.foldersProcessed} / ${totalStats.totalFolders}`);
+    Logger.log(`   Files analyzed: ${totalStats.filesAnalyzed}`);
+    Logger.log(`   Files skipped: ${totalStats.filesSkipped}`);
+    Logger.log(`   Files ${config.DRY_RUN ? 'that would be deleted' : 'deleted'}: ${totalStats.filesDeleted}`);
+    Logger.log(`   Space ${config.DRY_RUN ? 'that would be freed' : 'freed'}: ${formatBytes(totalStats.spaceFreed)}`);
     Logger.log('='.repeat(80));
 
     if (config.DRY_RUN) {
@@ -206,6 +259,9 @@ function viewConfig(): void {
     Logger.log(`EXCLUDED_EXTENSIONS: ${JSON.stringify(config.EXCLUDED_EXTENSIONS, null, 2)}`);
     Logger.log(`FOLDER_SORT_MODE: ${config.FOLDER_SORT_MODE}`);
     Logger.log(`FILE_AGE_FILTER_DAYS: ${config.FILE_AGE_FILTER_DAYS}`);
+    Logger.log(`MERGE_DUPLICATE_FOLDERS: ${config.MERGE_DUPLICATE_FOLDERS}`);
+    Logger.log(`MERGE_FOLDERS_RECURSIVE: ${config.MERGE_FOLDERS_RECURSIVE}`);
+    Logger.log(`MERGE_KEEP_FOLDER_STRATEGY: ${config.MERGE_KEEP_FOLDER_STRATEGY}`);
     Logger.log(`DRY_RUN: ${config.DRY_RUN}`);
     Logger.log('─'.repeat(80));
   } catch (e: any) {
